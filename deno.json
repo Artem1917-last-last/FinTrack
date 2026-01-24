@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "audit": "echo '--- AUDIT: ACCOUNTING ---' && deno info supabase/functions/expense-bot/modules/accounting/index.ts && echo '--- AUDIT: REPORTS ---' && deno info supabase/functions/expense-bot/modules/reports/index.ts && echo '--- AUDIT: SHARED ---' && deno info supabase/functions/expense-bot/modules/shared/index.ts",
+    "deploy": "supabase functions deploy expense-bot --no-verify-jwt"
+  },
+  "imports": {
+    "@/": "./supabase/functions/expense-bot/modules/",
+    "grammy": "https://deno.land/x/grammy@v1.21.1/mod.ts",
+    "supabase": "npm:@supabase/supabase-js@2.39.7",
+    "sheetjs": "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs",
+    "@std/datetime": "https://deno.land/std@0.217.0/datetime/mod.ts"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}

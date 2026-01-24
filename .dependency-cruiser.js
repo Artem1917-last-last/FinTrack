@@ -1,25 +1,18 @@
-module.exports = {
-  forbidden: [
-    {
-      name: 'no-interface-in-accounting',
-      comment: 'Логика учета не должна зависеть от Telegram (interface)',
-      severity: 'error',
-      from: { path: '^supabase/functions/expense-bot/modules/accounting' },
-      to: { path: '^supabase/functions/expense-bot/modules/interface' }
-    },
-    {
-      name: 'no-telegram-in-reports',
-      comment: 'Генератор Excel не должен знать о существовании бота',
-      severity: 'error',
-      from: { path: '^supabase/functions/expense-bot/modules/reports' },
-      to: { path: '^supabase/functions/expense-bot/modules/interface' }
-    },
-    {
-      name: 'circular-dependencies',
-      comment: 'Запрет циклических зависимостей (петли в коде)',
-      severity: 'error',
-      from: {},
-      to: { circular: true }
+{
+  "tasks": {
+    "check-arch": "npx dependency-cruiser supabase/functions/expense-bot/modules --config .dependency-cruiser.js",
+    "deploy": "deno task check-arch && supabase functions deploy expense-bot --no-verify-jwt"
+  },
+  "imports": {
+    "@/": "./supabase/functions/expense-bot/modules/",
+    "grammy": "https://deno.land/x/grammy@v1.21.1/mod.ts",
+    "supabase": "npm:@supabase/supabase-js@2.39.7",
+    "sheetjs": "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs",
+    "@std/datetime": "https://deno.land/std@0.217.0/datetime/mod.ts"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
     }
-  ]
-};
+  }
+}

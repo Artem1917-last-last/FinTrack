@@ -1,3 +1,19 @@
-Get started by customizing your environment (defined in the .idx/dev.nix file) with the tools and IDE extensions you'll need for your project!
+Как провести аудит: 3 простых шага
+Шаг 1. Запуск рентгена В терминале проекта выполните команду:
 
-Learn more at https://developers.google.com/idx/guides/customize-idx-env
+Bash
+
+deno task audit
+Эта команда использует встроенный инструмент Deno для построения дерева зависимостей основных модулей.
+
+Шаг 2. Копирование отчета Скопируйте весь текст, который выдаст терминал (от строки --- AUDIT: ACCOUNTING --- до самого конца).
+
+Шаг 3. ИИ-проверка (Prompt) Отправьте скопированный текст вашему ИИ-ассистенту вместе с этим промптом:
+
+Промпт для ИИ: «Проверь этот отчет аудита Deno на нарушение правил Модульного Монолита. Ищи запрещенные импорты. Правила:
+
+В ACCOUNTING не должно быть упоминаний grammy (Telegram) или путей /interface.
+
+В REPORTS не должно быть упоминаний grammy или путей /interface.
+
+В SHARED не должно быть ссылок ни на один другой модуль. Дай короткий вердикт: Чисто или Хаос.»
