@@ -1,0 +1,12 @@
+{
+  "imports": {
+    "@/": "./modules/",
+    "grammy": "https://deno.land/x/grammy@v1.20.3/mod.ts",
+    "supabase": "https://esm.sh/@supabase/supabase-js@2.39.7"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}
