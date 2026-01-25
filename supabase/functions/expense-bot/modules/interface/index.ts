@@ -1,35 +1,57 @@
+import { Bot, Context } from "https://deno.land/x/grammy@v1.21.1/mod.ts";
+import { saveExpense, getCategories } from "../accounting/index.ts";
 
-import { Bot, Context } from 'https://deno.land/x/grammy@v1.20.3/mod.ts';
-import { getCategories } from '../accounting/index.ts';
+// Создаем бота
+const bot = new Bot(Deno.env.get("TELEGRAM_BOT_TOKEN") || "");
 
-export const bot = new Bot(Deno.env.get('TELEGRAM_BOT_TOKEN') || '');
-
-function parseAmount(text: string) {
+// Улучшенный парсер
+function parseMessage(text: string) {
   const match = text.match(/(\d+(?:[.,]\d+)?)/);
   if (!match) return null;
   
-  return {
-    amount: parseFloat(match[0].replace(',', '.')),
-    description: text.replace(match[0], '').trim()
-  };
+  const amountStr = match[0];
+  const amount = parseFloat(amountStr.replace(",", "."));
+  const description = text.replace(amountStr, "").trim() || "Без описания";
+  
+  return { amount, description };
 }
 
-bot.command('start', (ctx: Context) => ctx.reply('Привет! Пришли сумму и описание (например: 500 нитки)'));
+bot.command("start", async (ctx: Context) => {
+  await ctx.reply("Привет! Пришли сумму и описание (например: 1500 нитки).");
+});
 
-bot.on('message:text', async (ctx: Context) => {
-  const text = ctx.message?.text || '';
-  const parsed = parseAmount(text);
-  
+// Используем "message:text", чтобы гарантировать наличие текста
+bot.on("message:text", async (ctx) => {
+  const text = ctx.message.text;
+  const userId = ctx.from.id;
+
+  const parsed = parseMessage(text);
+
   if (!parsed) {
-    return ctx.reply('Не вижу суммы. Попробуй еще раз.');
+    await ctx.reply("❌ Не вижу суммы. Напиши число (например: 1500 фурнитура).");
+    return;
   }
 
-  const categories = await getCategories();
-  const categoryList = categories.map((c: { name: string }) => c.name).join(', ');
-  
-  await ctx.reply(
-    `Вижу сумму: ${parsed.amount}\n` +
-    `Описание: ${parsed.description}\n\n` +
-    `Доступные категории: ${categoryList}`
-  );
+  try {
+    // 3. Сохраняем в базу
+    await saveExpense(userId, parsed.amount, parsed.description);
+
+    // 4. Загружаем категории
+    const categories = await getCategories();
+    
+    // Формируем список категорий аккуратно
+    const categoryList = (categories && categories.length > 0)
+      ? categories.map((c: { name: string }) => c.name).join(", ")
+      : "список пуст";
+
+    await ctx.reply(
+      `✅ Записал: ${parsed.amount} ₸ (${parsed.description})\n\n` +
+      `Доступные категории: ${categoryList}`
+    );
+  } catch (err) {
+    console.error("Ошибка в боте:", err);
+    await ctx.reply("❌ Ошибка при сохранении. Проверь базу данных.");
+  }
 });
+
+export { bot };

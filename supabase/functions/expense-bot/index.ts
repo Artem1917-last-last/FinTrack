@@ -1,15 +1,10 @@
-import { webhookCallback } from 'https://deno.land/x/grammy@v1.20.3/mod.ts';
+import { webhookCallback } from 'https://deno.land/x/grammy@v1.21.1/mod.ts';
 import { bot } from './modules/interface/index.ts';
 
 // Это точка входа Edge Function
 Deno.serve(async (req) => {
   try {
-    const url = new URL(req.url);
-    // Простейшая проверка безопасности: токен бота в пути (опционально)
-    if (url.searchParams.get('secret') !== Deno.env.get('FUNCTION_SECRET')) {
-      return new Response('Not allowed', { status: 403 });
-    }
-
+    // Просто сразу передаем запрос в Телеграм-бота
     return await webhookCallback(bot, 'std/http')(req);
   } catch (err) {
     console.error(err);
