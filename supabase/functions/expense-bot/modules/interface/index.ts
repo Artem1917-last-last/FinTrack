@@ -1,57 +1,64 @@
-import { Bot, Context } from "https://deno.land/x/grammy@v1.21.1/mod.ts";
-import { saveExpense, getCategories } from "../accounting/index.ts";
+import { Bot, InlineKeyboard } from "https://deno.land/x/grammy@v1.21.1/mod.ts";
+import { deleteSession } from "../accounting/index.ts";
+import { setupDispatcher } from "./dispatcher.ts";
 
-// Создаем бота
-const bot = new Bot(Deno.env.get("TELEGRAM_BOT_TOKEN") || "");
+// Точки входа из модулей
+import { enterRecordFlow } from "../workflow/index.ts";
+import { enterReportFlow } from "../reports/index.ts";
+import { enterCategoryFlow } from "../categories/index.ts";
+import { enterUsersFlow } from "../users/index.ts";
 
-// Улучшенный парсер
-function parseMessage(text: string) {
-  const match = text.match(/(\d+(?:[.,]\d+)?)/);
-  if (!match) return null;
+export const mainMenuKeyboard = new InlineKeyboard()
+  .text("💳 Записать расход", "start_record").row()
+  .text("📂 Категории", "manage_categories")
+  .text("📊 Отчет Excel", "get_report").row()
+  .text("👥 Доступ", "manage_users");
+
+export function setupInterface(bot: Bot) {
   
-  const amountStr = match[0];
-  const amount = parseFloat(amountStr.replace(",", "."));
-  const description = text.replace(amountStr, "").trim() || "Без описания";
-  
-  return { amount, description };
+  // ВКЛЮЧАЕМ ДИСПЕТЧЕР ТЕКСТА
+  setupDispatcher(bot);
+
+  // Команда /start или /menu — всегда сбрасывает текущий шаг
+  bot.command(["start", "menu"], async (ctx) => {
+    if (ctx.from) await deleteSession(ctx.from.id);
+    await ctx.reply("🏠 **Главное меню Unum**", { 
+      reply_markup: mainMenuKeyboard, 
+      parse_mode: "Markdown" 
+    });
+  });
+
+  // Универсальная кнопка "Назад в меню" (сброс сессии)
+  bot.callbackQuery("back_to_menu", async (ctx) => {
+    if (ctx.from) await deleteSession(ctx.from.id);
+    await ctx.editMessageText("🏠 **Главное меню Unum**", { 
+      reply_markup: mainMenuKeyboard, 
+      parse_mode: "Markdown" 
+    });
+    await ctx.answerCallbackQuery();
+  });
+
+  /**
+   * РАСПРЕДЕЛЕНИЕ ПО МОДУЛЯМ (КНОПКИ)
+   */
+
+  bot.callbackQuery("start_record", async (ctx) => {
+    await enterRecordFlow(ctx);
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery("manage_categories", async (ctx) => {
+    await enterCategoryFlow(ctx);
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery("get_report", async (ctx) => {
+    await enterReportFlow(ctx);
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery("manage_users", async (ctx) => {
+    await enterUsersFlow(ctx);
+    await ctx.answerCallbackQuery();
+  });
 }
-
-bot.command("start", async (ctx: Context) => {
-  await ctx.reply("Привет! Пришли сумму и описание (например: 1500 нитки).");
-});
-
-// Используем "message:text", чтобы гарантировать наличие текста
-bot.on("message:text", async (ctx) => {
-  const text = ctx.message.text;
-  const userId = ctx.from.id;
-
-  const parsed = parseMessage(text);
-
-  if (!parsed) {
-    await ctx.reply("❌ Не вижу суммы. Напиши число (например: 1500 фурнитура).");
-    return;
-  }
-
-  try {
-    // 3. Сохраняем в базу
-    await saveExpense(userId, parsed.amount, parsed.description);
-
-    // 4. Загружаем категории
-    const categories = await getCategories();
-    
-    // Формируем список категорий аккуратно
-    const categoryList = (categories && categories.length > 0)
-      ? categories.map((c: { name: string }) => c.name).join(", ")
-      : "список пуст";
-
-    await ctx.reply(
-      `✅ Записал: ${parsed.amount} ₸ (${parsed.description})\n\n` +
-      `Доступные категории: ${categoryList}`
-    );
-  } catch (err) {
-    console.error("Ошибка в боте:", err);
-    await ctx.reply("❌ Ошибка при сохранении. Проверь базу данных.");
-  }
-});
-
-export { bot };
