@@ -1,12 +1,17 @@
 import { InlineKeyboard } from "https://deno.land/x/grammy@v1.21.1/mod.ts";
 
-export function makeCategoriesKeyboard(categories: any[] = []) {
+// Типизация на основе твоей таблицы 'categories'
+interface Category {
+  id: string;   // uuid в базе
+  name: string; // text в базе
+}
+
+export function makeCategoriesKeyboard(categories: Category[] = []) {
   const keyboard = new InlineKeyboard();
   
-  // Если категории есть — выводим их
   if (categories.length > 0) {
     categories.forEach(cat => {
-      // Кнопка удаления категории (общая для всех)
+      // Используем cat.id и cat.name, теперь IDE будет их подсказывать
       keyboard.text(`❌ ${cat.name}`, `del_cat:${cat.id}`).row();
     });
   }

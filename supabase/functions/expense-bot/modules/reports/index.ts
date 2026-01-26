@@ -1,2 +1,8 @@
-// Реэкспорт с переименованием для Диспетчера
-export { enterReportFlow, handleReportDates as handleReportText } from "./handlers.ts";
+// modules/reports/index.ts
+
+// Добавляем setupReportHandlers в список экспорта
+export { 
+    enterReportFlow, 
+    handleReportDates as handleReportText,
+    setupReportHandlers // <--- ВОТ ЭТОГО НЕ ХВАТАЛО
+  } from "./handlers.ts";

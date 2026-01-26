@@ -7,7 +7,7 @@
     "@/": "./supabase/functions/expense-bot/modules/",
     "grammy": "https://deno.land/x/grammy@v1.21.1/mod.ts",
     "supabase": "npm:@supabase/supabase-js@2.39.7",
-    "sheetjs": "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs",
+    "exceljs": "npm:exceljs@4.4.0",
     "@std/datetime": "https://deno.land/std@0.217.0/datetime/mod.ts"
   },
   "lint": {

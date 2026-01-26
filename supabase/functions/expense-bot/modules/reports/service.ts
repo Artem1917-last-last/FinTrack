@@ -1,80 +1,104 @@
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs";
 import { supabaseAdmin } from "../shared/supabase.ts";
-import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
-// Исправил название функции для импорта в handlers.ts
-export async function generateExcelFile(userId: string | number, fromDate: string, toDate: string) {
-  // 1. Получаем данные за период (УБРАЛ фильтр .eq("user_id"), так как база общая)
-  const { data: expenses, error } = await supabaseAdmin
+interface ExpenseFromDB {
+  created_at: string;
+  amount: number;
+  comment: string | null; 
+  categories: { name: string } | null;
+}
+
+function parseDateRange(dateStr: string, endOfDay = false): string {
+  const [d, m, y] = dateStr.split(".");
+  return endOfDay ? `${y}-${m}-${d}T23:59:59.999Z` : `${y}-${m}-${d}T00:00:00.000Z`;
+}
+
+export async function generateExcelFile(userId: string | number, fromStr: string, toStr: string): Promise<Uint8Array | null> {
+  const fromDate = parseDateRange(fromStr);
+  const toDate = parseDateRange(toStr, true);
+
+  const { data, error } = await supabaseAdmin
     .from("expenses")
-    .select(`created_at, amount, comment, categories ( name )`)
+    /**
+     * ПРОФЕССИОНАЛЬНОЕ РЕШЕНИЕ:
+     * Мы явно указываем название связи '!fk_expenses_categories'.
+     * Это решает ошибку PGRST201, даже если в базе временно остались дубликаты.
+     */
+    .select(`created_at, amount, comment, categories!fk_expenses_categories ( name )`)
+    .eq("user_id", userId.toString())
     .gte("created_at", fromDate)
     .lte("created_at", toDate)
     .order("created_at", { ascending: true });
 
-  if (error) throw error;
-  if (!expenses || expenses.length === 0) return null;
+  if (error || !data) {
+    console.error("[DB_SELECT_ERROR]", error);
+    throw error;
+  }
+  
+  if (data.length === 0) return null;
 
-  const workbook = XLSX.utils.book_new();
-  const monthlyData: Record<string, any[]> = {};
-  let grandTotal = 0;
+  const expenses = data as unknown as ExpenseFromDB[];
+  const wb = XLSX.utils.book_new();
 
-  // 2. Группируем по месяцам и считаем итоги
-  expenses.forEach((exp) => {
-    const dateObj = new Date(exp.created_at);
-    const monthYear = dateObj.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
-    const categoryName = (exp.categories as any)?.name || "Без категории";
-    const amount = Number(exp.amount);
-    grandTotal += amount;
+  // --- СВОДКА ---
+  const totalSum = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const summaryData: (string | number)[][] = [
+    ["ОТЧЕТ ПО ЗАТРАТАМ (UNUM)"],
+    ["Период:", `${fromStr} — ${toStr}`],
+    [],
+    ["ИТОГО ЗА ПЕРИОД:", totalSum, "₽"]
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), "Сводка");
 
-    if (!monthlyData[monthYear]) monthlyData[monthYear] = [];
-    monthlyData[monthYear].push({
-      rawDate: dateObj.toLocaleDateString("ru-RU"),
-      category: categoryName,
-      amount: amount
-    });
+  // --- ЛИСТЫ ПО МЕСЯЦАМ ---
+  const months: Record<string, ExpenseFromDB[]> = {};
+  expenses.forEach(e => {
+    const d = new Date(e.created_at);
+    const mName = d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" }).replace(/^./, s => s.toUpperCase());
+    if (!months[mName]) months[mName] = [];
+    months[mName].push(e);
   });
 
-  // 3. Создаем лист "Сводка"
-  const summaryData = [
-    ["ОТЧЕТ ПО ЗАТРАТАМ (ОБЩИЙ)"],
-    ["Период:", `${fromDate} — ${toDate}`],
-    [],
-    ["ИТОГО ЗА ВЕСЬ ПЕРИОД", grandTotal],
-    [],
-    ["Детализация по месяцам представлена на следующих вкладках."]
-  ];
-  const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(workbook, summarySheet, "Сводка");
-
-  // 4. Формируем листы по месяцам
-  for (const [monthName, items] of Object.entries(monthlyData)) {
-    const sheetRows = [["Дата", "Категория затрат", "Сумма (₸)"]];
+  for (const [mName, items] of Object.entries(months)) {
+    const sheetData: (string | number)[][] = [["Дата", "Категория", "Описание", "Сумма (₽)"]];
     let dailyTotal = 0;
-    let currentDate = items[0].rawDate;
+    let lastDate = new Date(items[0].created_at).toLocaleDateString("ru-RU");
 
-    items.forEach((item, index) => {
-      if (item.rawDate !== currentDate) {
-        sheetRows.push([`Итог за ${currentDate}`, "", dailyTotal]);
-        sheetRows.push([]);
+    items.forEach((item, idx) => {
+      const curDate = new Date(item.created_at).toLocaleDateString("ru-RU");
+      
+      if (curDate !== lastDate) {
+        sheetData.push([`Итог за ${lastDate.substring(0, 5)}`, "", "", dailyTotal], []);
         dailyTotal = 0;
-        currentDate = item.rawDate;
+        lastDate = curDate;
       }
-
-      sheetRows.push([item.rawDate, item.category, item.amount]);
-      dailyTotal += item.amount;
-
-      if (index === items.length - 1) {
-        sheetRows.push([`Итог за ${currentDate}`, "", dailyTotal]);
+      
+      sheetData.push([
+        curDate, 
+        item.categories?.name || "Без категории", 
+        item.comment || "-", 
+        Number(item.amount)
+      ]);
+      
+      dailyTotal += Number(item.amount);
+      
+      if (idx === items.length - 1) {
+        sheetData.push([`Итог за ${curDate.substring(0, 5)}`, "", "", dailyTotal]);
       }
     });
 
-    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
-    worksheet["!cols"] = [{ wch: 15 }, { wch: 25 }, { wch: 15 }];
-    const range = XLSX.utils.decode_range(worksheet["!ref"]!);
-    worksheet["!autofilter"] = { ref: `A1:C${range.e.r}` };
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
-    XLSX.utils.book_append_sheet(workbook, worksheet, monthName);
+    ws["!cols"] = [
+      { wch: 12 }, // Дата
+      { wch: 20 }, // Категория
+      { wch: 40 }, // Описание
+      { wch: 15 }  // Сумма
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, mName.substring(0, 31));
   }
 
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  return new Uint8Array(buf);
 }

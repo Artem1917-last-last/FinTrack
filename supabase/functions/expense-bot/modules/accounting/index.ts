@@ -1,23 +1,32 @@
 import { supabaseAdmin } from "../shared/supabase.ts";
 
-/** * --- СЕССИИ (Черновики) --- 
- * ВАЖНО: Предполагаем, что таблица bot_sessions имеет колонку user_id (text)
- */
-export async function setSession(userId: string | number, data: { amount?: number, comment?: string, step?: string }) {
+/** * --- ТИПИЗАЦИЯ СЕССИИ --- */
+export interface Session {
+  step?: string;
+  amount?: number;
+  comment?: string;
+  report_from?: string;
+  target_user_id?: string;
+}
+
+/** * --- СЕССИИ (Черновики) --- */
+
+export async function setSession(userId: string | number, data: Session) {
   const { error } = await supabaseAdmin
     .from("bot_sessions")
     .upsert({ user_id: userId.toString(), ...data });
   if (error) throw error;
 }
 
-export async function getSession(userId: string | number) {
+export async function getSession(userId: string | number): Promise<Session | null> {
   const { data, error } = await supabaseAdmin
     .from("bot_sessions")
     .select("*")
     .eq("user_id", userId.toString())
-    .maybeSingle(); // maybeSingle лучше для проверки наличия
+    .maybeSingle(); 
+    
   if (error) throw error;
-  return data;
+  return data as Session | null;
 }
 
 export async function deleteSession(userId: string | number) {
@@ -28,16 +37,15 @@ export async function deleteSession(userId: string | number) {
   if (error) throw error;
 }
 
-/** * --- РАСХОДЫ (expenses) --- 
- * Колонки: id(uuid), user_id(text), amount(numeric), category_id(uuid), comment(text)
- */
+/** * --- РАСХОДЫ (expenses) --- */
+
 export async function saveExpense(userId: string | number, amount: number, categoryId: string, comment: string = "") {
   const { data, error } = await supabaseAdmin
     .from("expenses")
     .insert([{ 
       user_id: userId.toString(), 
       amount, 
-      category_id: categoryId, // Здесь должен быть UUID
+      category_id: categoryId, 
       comment 
     }])
     .select()
@@ -51,17 +59,18 @@ export async function deleteExpense(expenseId: string) {
   const { error } = await supabaseAdmin
     .from("expenses")
     .delete()
-    .eq("id", expenseId); // expenseId должен быть строкой-UUID
+    .eq("id", expenseId); 
   if (error) throw error;
 }
 
-/** * --- КАТЕГОРИИ (categories) --- 
- * Колонки: id(uuid), name(text), user_id(text)
- */
+/** * --- КАТЕГОРИИ (categories) --- */
+
+// 1. ИСПРАВЛЕНО: Теперь берем только НЕ архивные категории
 export async function getCategories() {
   const { data, error } = await supabaseAdmin
     .from("categories")
     .select("id, name")
+    .eq("is_archived", false) // Фильтр: только активные
     .order("name", { ascending: true });
   if (error) throw error;
   return data;
@@ -70,24 +79,24 @@ export async function getCategories() {
 export async function addCategory(name: string) {
   const { data, error } = await supabaseAdmin
     .from("categories")
-    .insert([{ name }]) // user_id nullable, оставляем пустым для общих категорий
+    .insert([{ name }]) 
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
+// 2. ИСПРАВЛЕНО: Мягкое удаление (Soft Delete)
 export async function deleteCategory(categoryId: string) {
   const { error } = await supabaseAdmin
     .from("categories")
-    .delete()
-    .eq("id", categoryId); // categoryId должен быть строкой-UUID
+    .update({ is_archived: true }) // Вместо удаления ставим флаг архива
+    .eq("id", categoryId); 
   if (error) throw error;
 }
 
-/** * --- ДОСТУП (access_list) --- 
- * Колонки: telegram_id(text), name(text), added_at(timestamptz)
- */
+/** * --- ДОСТУП (access_list) --- */
+
 export async function getAllowedUsers() {
   const { data, error } = await supabaseAdmin
     .from("access_list")
@@ -97,7 +106,7 @@ export async function getAllowedUsers() {
   return data;
 }
 
-export async function addUser(targetId: string | number, name: string = "Новый пользователь") {
+export async function addUser(targetId: string | number, name: string = "Пользователь") {
   const { data, error } = await supabaseAdmin
     .from("access_list")
     .insert([{ 
