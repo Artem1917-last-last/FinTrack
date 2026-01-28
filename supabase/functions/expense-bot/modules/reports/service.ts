@@ -1,3 +1,4 @@
+// modules/reports/service.ts
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs";
 import { supabaseAdmin } from "../shared/supabase.ts";
 
@@ -19,11 +20,6 @@ export async function generateExcelFile(userId: string | number, fromStr: string
 
   const { data, error } = await supabaseAdmin
     .from("expenses")
-    /**
-     * ПРОФЕССИОНАЛЬНОЕ РЕШЕНИЕ:
-     * Мы явно указываем название связи '!fk_expenses_categories'.
-     * Это решает ошибку PGRST201, даже если в базе временно остались дубликаты.
-     */
     .select(`created_at, amount, comment, categories!fk_expenses_categories ( name )`)
     .eq("user_id", userId.toString())
     .gte("created_at", fromDate)
@@ -60,7 +56,8 @@ export async function generateExcelFile(userId: string | number, fromStr: string
   });
 
   for (const [mName, items] of Object.entries(months)) {
-    const sheetData: (string | number)[][] = [["Дата", "Категория", "Описание", "Сумма (₽)"]];
+    // 1. Изменили заголовок: Сумма теперь ПЕРЕД Описанием
+    const sheetData: (string | number)[][] = [["Дата", "Категория", "Сумма (₽)", "Описание"]];
     let dailyTotal = 0;
     let lastDate = new Date(items[0].created_at).toLocaleDateString("ru-RU");
 
@@ -68,32 +65,36 @@ export async function generateExcelFile(userId: string | number, fromStr: string
       const curDate = new Date(item.created_at).toLocaleDateString("ru-RU");
       
       if (curDate !== lastDate) {
-        sheetData.push([`Итог за ${lastDate.substring(0, 5)}`, "", "", dailyTotal], []);
+        // 2. Сдвинули итог дня: сумма в 3-й колонке, 4-я пустая
+        sheetData.push([`Итог за ${lastDate.substring(0, 5)}`, "", dailyTotal, ""], []);
         dailyTotal = 0;
         lastDate = curDate;
       }
       
+      // 3. Поменяли местами Number(item.amount) и item.comment
       sheetData.push([
         curDate, 
         item.categories?.name || "Без категории", 
-        item.comment || "-", 
-        Number(item.amount)
+        Number(item.amount),
+        item.comment || "-"
       ]);
       
       dailyTotal += Number(item.amount);
       
       if (idx === items.length - 1) {
-        sheetData.push([`Итог за ${curDate.substring(0, 5)}`, "", "", dailyTotal]);
+        // 4. Финальный итог дня тоже сдвинут
+        sheetData.push([`Итог за ${curDate.substring(0, 5)}`, "", dailyTotal, ""]);
       }
     });
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
+    // 5. Перенастроили ширину колонок под новый порядок
     ws["!cols"] = [
       { wch: 12 }, // Дата
       { wch: 20 }, // Категория
-      { wch: 40 }, // Описание
-      { wch: 15 }  // Сумма
+      { wch: 15 }, // Сумма (₽)
+      { wch: 50 }  // Описание (сделали чуть шире, так как оно теперь скраю)
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, mName.substring(0, 31));

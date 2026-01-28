@@ -1,6 +1,8 @@
+// modules/accounting/index.ts
 import { supabaseAdmin } from "../shared/supabase.ts";
 
-/** * --- ТИПИЗАЦИЯ СЕССИИ --- */
+/** ... (Session interface и функции сессий без изменений) ... **/
+
 export interface Session {
   step?: string;
   amount?: number;
@@ -8,8 +10,6 @@ export interface Session {
   report_from?: string;
   target_user_id?: string;
 }
-
-/** * --- СЕССИИ (Черновики) --- */
 
 export async function setSession(userId: string | number, data: Session) {
   const { error } = await supabaseAdmin
@@ -24,7 +24,6 @@ export async function getSession(userId: string | number): Promise<Session | nul
     .select("*")
     .eq("user_id", userId.toString())
     .maybeSingle(); 
-    
   if (error) throw error;
   return data as Session | null;
 }
@@ -37,7 +36,7 @@ export async function deleteSession(userId: string | number) {
   if (error) throw error;
 }
 
-/** * --- РАСХОДЫ (expenses) --- */
+/** --- РАСХОДЫ (expenses) --- **/
 
 export async function saveExpense(userId: string | number, amount: number, categoryId: string, comment: string = "") {
   const { data, error } = await supabaseAdmin
@@ -50,7 +49,6 @@ export async function saveExpense(userId: string | number, amount: number, categ
     }])
     .select()
     .single();
-
   if (error) throw new Error(`Ошибка сохранения расхода: ${error.message}`);
   return data;
 }
@@ -63,39 +61,44 @@ export async function deleteExpense(expenseId: string) {
   if (error) throw error;
 }
 
-/** * --- КАТЕГОРИИ (categories) --- */
+/** --- КАТЕГОРИИ (categories) --- **/
 
-// 1. ИСПРАВЛЕНО: Теперь берем только НЕ архивные категории
 export async function getCategories() {
   const { data, error } = await supabaseAdmin
     .from("categories")
     .select("id, name")
-    .eq("is_archived", false) // Фильтр: только активные
+    .eq("is_archived", false)
     .order("name", { ascending: true });
   if (error) throw error;
   return data;
 }
 
+// ИСПРАВЛЕНО: Умное добавление с восстановлением из архива
 export async function addCategory(name: string) {
+  const cleanName = name.trim();
+  
   const { data, error } = await supabaseAdmin
     .from("categories")
-    .insert([{ name }]) 
+    .upsert(
+      { name: cleanName, is_archived: false }, 
+      { onConflict: "name" } // Если имя уже есть, обновляем is_archived на false
+    )
     .select()
     .single();
+
   if (error) throw error;
   return data;
 }
 
-// 2. ИСПРАВЛЕНО: Мягкое удаление (Soft Delete)
 export async function deleteCategory(categoryId: string) {
   const { error } = await supabaseAdmin
     .from("categories")
-    .update({ is_archived: true }) // Вместо удаления ставим флаг архива
+    .update({ is_archived: true })
     .eq("id", categoryId); 
   if (error) throw error;
 }
 
-/** * --- ДОСТУП (access_list) --- */
+/** --- ДОСТУП (access_list) --- **/
 
 export async function getAllowedUsers() {
   const { data, error } = await supabaseAdmin
